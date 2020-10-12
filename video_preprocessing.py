@@ -102,6 +102,50 @@ class computeOpticalFlow:
             print('Generating optical flow.')
             self.get_optical_frame()
 
+def create_data_blobs(optical_flow_folder_path: str, transcriptions_folder_path: str, kinematics_folder_path: str, num_frames_per_blob: int, blobs_save_folder_path: str, spacing: int) -> None:
+    if not os.path.exists(blobs_save_folder_path):
+        os.makedirs(blobs_save_folder_path)
+    
+    blob_count = 0
+
+    for file in os.listdir(transcriptions_folder_path):
+        try:
+            curr_file_path = os.path.join(transcriptions_folder_path, file)
+
+            print('Processing file: {}'.format(curr_file_path.split('/')[-1]))
+
+            curr_optical_flow_file = '_'.join([file.split('.')[0], 'capture1_resized.p'])
+            curr_optical_flow_file = os.path.join(optical_flow_folder_path, curr_optical_flow_file)
+            optical_flow_file = pickle.load(open(curr_optical_flow_file, 'rb'))
+
+            curr_kinematics_file = '.'.join([file.split('.')[0], 'txt'])
+            curr_kinematics_file = os.path.join(kinematics_folder_path, curr_kinematics_file)
+            kinematics_list = []
+
+            with open (curr_kinematics_file) as kf:
+                for line in kf:
+                    kinematics_list.append([float(v) for v in line.strip('\n').strip().split('     ')])
+                kf.close()
+
+            with open(curr_file_path, 'r') as f:
+                for line in f:
+                    line = line.strip('\n').strip()
+                    line = line.split(' ')
+                    start = int(line[0])
+                    end = int(line[1])
+                    gesture = line[2]
+                    curr_blob = [torch.tensor(v) for v in optical_flow_file[start: start + spacing*num_frames_per_blob : spacing]]
+                    curr_blob = torch.cat(curr_blob, dim = 2).permute(2, 0, 1)
+                    curr_kinematics_blob = [torch.tensor(v).view(1, 76) for v in kinematics_list[start: start + spacing*num_frames_per_blob: spacing]]
+                    curr_kinematics_blob = torch.stack(curr_kinematics_blob, dim = 0)
+                    save_tuple = (curr_blob, curr_kinematics_blob)
+                    curr_blob_save_path = 'blob_' + str(blob_count) + '_video_' + curr_file_path.split('/')[-1].split('.')[0].split('_')[-1] + '_gesture_' + gesture + '.p'
+                    curr_blob_save_path = os.path.join(blobs_save_folder_path, curr_blob_save_path)
+                    pickle.dump(save_tuple, open(curr_blob_save_path, 'wb'))
+
+                    blob_count += 1
+        except:
+            pass
 
 def main():
     source_directory = '../jigsaw_dataset/Surgeon_study_videos/videos'
